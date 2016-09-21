@@ -8,19 +8,17 @@
 *
 */
 
-#include "m_pd.h"      //Pure Data header file
+#include "m_pd.h"      //pd header file
 #include "lsl_c.h"     //LSL header file
 #include <stdio.h>
 #include <string.h>
 
-#define DEFAULT_NCHAN 10        //pull this from object parameters
 #define MAX_NCHAN 2000          //some unreaonably large value
-#define DEFAULT_STREAM_NAME "Test"
+#define DEFAULT_STREAM_NAME "pd"
 #define MAX_STREAM_NAME_LENGTH 200
 #define DEFAULT_DATA_TYPE "string"
 #define MAX_DATA_TYPE_LENGTH 32
 #define POLLING_INTERVAL_MS 1   //poll stream this often (Q: is there any way to specify a callback?)
-
  
 
 //typedef is used to give a type a new name
@@ -31,9 +29,15 @@ static t_class *lslreceive_class;
 typedef struct _lslreceive{
 	t_object x_obj;
 
-	char lsl_stream_name[MAX_STREAM_NAME_LENGTH];
 
-	t_outlet *out_A, *out_B, *out_synch, *out_count;
+	/* Stream Attributes */
+	char  lsl_stream_name[MAX_STREAM_NAME_LENGTH]; /* Stream Name */
+	lsl_streaminfo* info;					/*streaminfo returned by the lsl_resolve_byprop call*/
+	lsl_inlet inlet;
+	int errcode;
+
+
+	t_outlet *out_data, *out_timestamp; 	/* outlets */
 	void * x_clock;
     char* cursample_string[MAX_NCHAN];     /* array to hold our current sample string*/
     float cursample_float[MAX_NCHAN];      /* array to hold our current sample float*/
@@ -62,120 +66,22 @@ void lslreceive_getSample(t_lslreceive *x);
 
  
 void *lslreceive_new(t_symbol* s, long argc, t_atom* argv){
-    t_lslreceive *x = (t_lslreceive *)pd_new(lslreceive_class);	
-	// post("%s",s);
-    post("%d", argc);
-    post("%s", atom_getsymbol(&argv[0])->s_name);
-    // post("%s", argv)
-	//set the stream name
-	strncpy(x->lsl_stream_name,atom_getsymbol(&argv[0])->s_name,MAX_STREAM_NAME_LENGTH);
-	post("OKOKKO");
-	// post("%s",x->lsl_stream_name);
-	// if (x != NULL) {
-        
- //        post("lslreceive module for Max/MSP, John Iversen, SCCN, January 2014");
- //        post("  Adapted from lslaudio by Grace Leslie and Christian Kothe.");
-        
- //        // get nchans, else use default
+    t_lslreceive *x = (t_lslreceive *)pd_new(lslreceive_class);
 
- //        // NO ARGUMENTS YET, JUST HARDCODE FOR NOW
- //        // if (argc>=1 && argv[0].a_type==A_LONG) {
- //        //     x->lsl_nchan = argv[0].a_w.w_long;
- //        //     if (x->lsl_nchan < 0) {
- //        //         x->lsl_nchan = 1;
- //        //         post("Warning: Must specify at least one channel. Defaulting to one channel.");
- //        //     }
- //        //     if (x->lsl_nchan > MAX_NCHAN) {
- //        //         x->lsl_nchan = MAX_NCHAN;
- //        //         post("Warning: Limiting the specified large number of channels to the maximum of 2000. Contact the author if this is not sufficient.");
- //        //     }
- //        // } else {
- //        //     post(" Using default number of channels (%d).",DEFAULT_NCHAN);
- //        //     x->lsl_nchan = DEFAULT_NCHAN;
- //        // }
+    /*Stream name*/	
+    if (argc>=1 && argv[0].a_type==A_SYMBOL){
+    	strncpy(x->lsl_stream_name,atom_getsymbol(&argv[0])->s_name,MAX_STREAM_NAME_LENGTH);
+    	post("");
+    }else{
+        strncpy(x->lsl_stream_name, DEFAULT_STREAM_NAME, MAX_STREAM_NAME_LENGTH);
+    }
 
- //        post("Using 1 channel default");
- //        x->lsl_nchan = 1;
-        
- //        // get stream name, or use default
- //        // if (argc>=2 && argv[1].a_type==A_SYM) {
- //        //     strncpy(x->lsl_stream_name, atom_getsym(&argv[1])->s_name, MAX_STREAM_NAME_LENGTH);
- //        // } else {
- //        //     strncpy(x->lsl_stream_name, DEFAULT_STREAM_NAME, MAX_STREAM_NAME_LENGTH);
- //        //     post(" Using default stream name (%s)",x->lsl_stream_name);
- //        // }
+    /* set lsl info */
+   	lsl_resolve_byprop(x->info,1,"name",x->lsl_stream_name,1,LSL_FOREVER);
+	x->lsl_inlet = lsl_create_inlet(x->info,300,LSL_NO_PREFERENCE,1);
+	lsl_open_stream(x->inlet,LSL_FOREVER,x->errcode);
 
- //        strncpy(x->lsl_stream_name, DEFAULT_STREAM_NAME, MAX_STREAM_NAME_LENGTH);
- //        post(" Using default stream name (%s)",x->lsl_stream_name);
-        
- //        // get stream format, default to string
- //        // if (argc>=3 && argv[2].a_type==A_SYM) {
- //        //     strncpy(x->data_type, atom_getsym(&argv[2])->s_name, MAX_DATA_TYPE_LENGTH);
- //        // } else {
- //        //     strncpy(x->data_type, DEFAULT_DATA_TYPE, MAX_DATA_TYPE_LENGTH);
- //        //     post(" Using default data type (%s)",x->data_type);
- //        // }
-        
-	// 	strncpy(x->data_type, DEFAULT_DATA_TYPE, MAX_DATA_TYPE_LENGTH);
-	// 	post(" Using default data type (%s)",x->data_type);
- //        x->lsl_channel_format = cft_string;
- //        post("parse string");
 
- //        // handle data-type specifics
- //        // if (!strcmp(x->data_type, "string")) {
- //        //     x->lsl_channel_format = cft_string;
- //        //     post("parse string");
- //        // } else if (!strcmp(x->data_type, "float")) {
- //        //     post("parse float");
- //        //     x->lsl_channel_format = cft_float32;
- //        // } else {
- //        //     post("ERROR: Unsupported data type (%s)",x->data_type);
- //        //     return NULL;
- //        // }
-        
- //         post("data_type=%s, lsl_channel_format=%d",x->data_type, x->lsl_channel_format);
-				
-	// 	/* open the stream of interest. We control stream creation, so can explicitly specify the stream rather than
- //         resolve it.*/
- //        post("Listening for an stream named '%s' with %d channels of %s...",x->lsl_stream_name,x->lsl_nchan, x->data_type);
-	// 	x->lsl_info = lsl_create_streaminfo(x->lsl_stream_name,"AudioControl",x->lsl_nchan,LSL_IRREGULAR_RATE,x->lsl_channel_format,"");
-        
- //        /* TODO: use resolver to only match stream with number of channels we're requesting */
- //        /* problem: MAX won't flush our post messages while this is happening, so user just gets a beachball without knowing why        */
- //        /*
- //        char pred[256];
- //        sprintf(pred, "type='AudioControl' and name='%s' and channel_count=%d","MAX",x->lsl_nchan);
- //        //post("search predicate: %s",pred);
- //        int n_found = 0;
- //        while (~n_found) {
- //            n_found = lsl_resolve_bypred(&x->lsl_info, 1, pred, 1, 1);
- //        }
- //         post("found %d",n_found);
- //         */        
-		
-	// 	/* make an inlet to read data from the stream (buffer max. 300 seconds of data, no preference regarding chunking, automatic recovery enabled) */
-	// 	x->lsl_inlet = lsl_create_inlet(x->lsl_info, 300, LSL_NO_PREFERENCE, 1);
-        
- //        // TODO on a rainy day: consider checking here if we have a valid stream, getting channel information, etc...
- //        /*
- //        int errcode; //we don't do anything with this
- //        lsl_streaminfo new_info = lsl_get_fullinfo(x->lsl_inlet, 1, &errcode);
- //         */
-                
- //        // actually, this never fails--it's always waiting for the stream until it appears
- //        if (x->lsl_inlet) {
-            
- //            x->out_A = outlet_new(&x->x_obj, &s_bang);
- //            x->out_B = outlet_new(&x->x_obj,&s_bang);
- //            x->out_synch = outlet_new(&x->x_obj, &s_bang);
- //            x->out_count = outlet_new(&x->x_obj, &s_float);
- //            x->m_clock  = clock_new((t_object *)x, lslreceive_getSample);
- //            clock_fdelay(x->m_clock, POLLING_INTERVAL_MS);
- //        } else {
- //            post("No matching stream was found. Be sure to specify the number of channels e.g. [lslreceive 10], and that it matches the source.");
- //        }
-	// }
-	
 	return (void *)x;
 }
 
