@@ -71,15 +71,13 @@ void *lslreceive_new(t_symbol* s, long argc, t_atom* argv){
     /*Stream name*/	
     if (argc>=1 && argv[0].a_type==A_SYMBOL){
     	strncpy(x->lsl_stream_name,atom_getsymbol(&argv[0])->s_name,MAX_STREAM_NAME_LENGTH);
-    	post("");
+    	post("ok");
     }else{
         strncpy(x->lsl_stream_name, DEFAULT_STREAM_NAME, MAX_STREAM_NAME_LENGTH);
     }
+    post(x->lsl_stream_name);
 
-    /* set lsl info */
-   	lsl_resolve_byprop(x->info,1,"name",x->lsl_stream_name,1,LSL_FOREVER);
-	x->lsl_inlet = lsl_create_inlet(x->info,300,LSL_NO_PREFERENCE,1);
-	lsl_open_stream(x->inlet,LSL_FOREVER,x->errcode);
+
 
 
 	return (void *)x;
@@ -102,9 +100,16 @@ void lslreceive_setup(void) {
 
 
 void lslreceive_bang(t_lslreceive *x){
+	double timestamp;		/* time stamp of the current sample (in sender time) */
+	char *cursample;		/* array to hold our current sample */
+
 	post("lsl test maybe sfaf out the name next time");
 	post("%s", x->lsl_stream_name);
+	/* set lsl info */
+	x->lsl_info = lsl_create_streaminfo(x->lsl_stream_name,"Markers",1,LSL_IRREGULAR_RATE,cft_string,"");
+	x->lsl_inlet = lsl_create_inlet(x->lsl_info, 300, LSL_NO_PREFERENCE, 1);
 
+	post("niceeeee");
 }
 
 // void lslreceive_free(t_lslreceive* x)
