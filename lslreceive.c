@@ -135,12 +135,10 @@ void *lslreceive_new(t_symbol* s,long argc, t_atom* argv){
     post("Channel Format: %s", x->data_type);
     post("data_type=%s, lsl_channel_format=%d",x->data_type, x->lsl_channel_format);
     post("Listening for stream...");
-	x->lsl_info = lsl_create_streaminfo("MyMarkerStream","Markers",x->lsl_nchan,0,cft_string,"");
+	x->lsl_info = lsl_create_streaminfo(x->lsl_stream_name,x->lsl_stream_type,x->lsl_nchan,0,x->lsl_channel_format,"");
     x->lsl_inlet = lsl_create_inlet(x->lsl_info, 300, LSL_NO_PREFERENCE, 1);
 
  	if (x->lsl_inlet) {
-        post("Stream found");
-
         /*Create oulets*/
         x->out_timestamp = outlet_new(&x->x_obj, &s_float); /* Left: timestamp */
         x->out_data = outlet_new(&x->x_obj, &s_list);       /* Right: data */
@@ -202,8 +200,7 @@ void lslreceive_getSample(t_lslreceive *x){
             case cft_string:
                 // return list of strings, for flexibility, and consumer can use [fromsymbol] to convert to numbers
                 for (int k=0; k < 1; ++k) {
-                    SETSYMBOL(x->myList+k,gensym(x->cursample_string[k]));
-                    
+                    SETSYMBOL(x->myList+k,gensym(x->cursample_string[k])); 
                 }
                 break;
                 
@@ -229,9 +226,8 @@ void lslreceive_getSample(t_lslreceive *x){
             case cft_float32:
                 x->lsl_timestamp = lsl_pull_sample_f(x->lsl_inlet,x->cursample_float,x->lsl_nchan,0,&errcode);
                 break;
-                
             default:
-                x->lsl_timestamp = 0; //should never reach
+                x->lsl_timestamp = 0;
                 break;
         }
 	}
