@@ -33,11 +33,17 @@ typedef struct _lslreceive{
 	/* Stream Attributes */
 	char  lsl_stream_name[MAX_STREAM_NAME_LENGTH]; /* Stream Name */
 	lsl_streaminfo* info;					/*streaminfo returned by the lsl_resolve_byprop call*/
+	
+	lsl_channel_format_t lsl_channel_format;
+
 	lsl_inlet inlet;
 	int errcode;
 
 
 	t_outlet *out_data, *out_timestamp; 	/* outlets */
+
+
+
 	void * x_clock;
     char* cursample_string[MAX_NCHAN];     /* array to hold our current sample string*/
     float cursample_float[MAX_NCHAN];      /* array to hold our current sample float*/
@@ -46,11 +52,10 @@ typedef struct _lslreceive{
     int lsl_nchan;              /* number of channels in the stream (speacified when creating object) */
       /* name of stream */
     char data_type[MAX_STREAM_NAME_LENGTH]; /* ui specified data type */
-    lsl_channel_format_t lsl_channel_format; /* lsl enum defined by data_type */
 	lsl_streaminfo lsl_info;	 //the streaminfo returned by the resolve call 
 	lsl_inlet lsl_inlet;		/* a stream inlet to get samples from */
 	int lsl_errcode;			/* error code (lsl_lost_error or timeouts) */
-    double lsl_timestamp;		/* time stamp of the current sample (in sender time) */
+    float lsl_timestamp;		/* time stamp of the current sample (in sender time) */
     double lsl_local_timestamp; /* tim estamp of receipt in local time */
 
 } t_lslreceive;
@@ -71,13 +76,40 @@ void *lslreceive_new(t_symbol* s, long argc, t_atom* argv){
     /*Stream name*/	
     if (argc>=1 && argv[0].a_type==A_SYMBOL){
     	strncpy(x->lsl_stream_name,atom_getsymbol(&argv[0])->s_name,MAX_STREAM_NAME_LENGTH);
-    	post("ok");
     }else{
         strncpy(x->lsl_stream_name, DEFAULT_STREAM_NAME, MAX_STREAM_NAME_LENGTH);
     }
     post(x->lsl_stream_name);
+	
+    x->lsl_nchan = 1;
+
+    post("Listening for an stream named '%s' with %d channels of %s...",x->lsl_stream_name,x->lsl_nchan, x->data_type);
+	x->lsl_info = lsl_create_streaminfo("MyMarkerStream","Markers",x->lsl_nchan,0,cft_string,"");
+	// char pred[256];
+
+ //    int n_found = 0;
+ //    post("finding stream");
+    // while (~n_found) {
+    //     n_found = lsl_resolve_byprop(&x->lsl_info, 1, "name", "MyMarkerStream", 1,LSL_FOREVER);
+    // }
+    // post("found %d",n_found);
 
 
+    x->lsl_inlet = lsl_create_inlet(x->lsl_info, 300, LSL_NO_PREFERENCE, 1);
+	x->lsl_channel_format = cft_string;
+
+ 	if (x->lsl_inlet) {
+
+        x->out_timestamp = outlet_new(&x->x_obj, &s_float);
+        x->out_data = outlet_new(&x->x_obj, &s_list);
+        
+
+        x->x_clock  = clock_new((t_object *)x, (t_method)lslreceive_getSample);
+        clock_delay(x->x_clock, POLLING_INTERVAL_MS);
+
+    } else {
+        post("No matching stream was found. Be sure to specify the number of channels e.g. [lslreceive 10], and that it matches the source.");
+    }
 
 
 	return (void *)x;
@@ -88,7 +120,7 @@ void *lslreceive_new(t_symbol* s, long argc, t_atom* argv){
 void lslreceive_setup(void) {  
   lslreceive_class = class_new(gensym("lslreceive"),  
 							    (t_newmethod)lslreceive_new,  
-							    0,
+							    (t_method)lslreceive_free,
 							    sizeof(t_lslreceive),  
 							    CLASS_DEFAULT,
 							    A_GIMME,
@@ -103,22 +135,85 @@ void lslreceive_bang(t_lslreceive *x){
 	double timestamp;		/* time stamp of the current sample (in sender time) */
 	char *cursample;		/* array to hold our current sample */
 
-	post("lsl test maybe sfaf out the name next time");
-	post("%s", x->lsl_stream_name);
-	/* set lsl info */
-	x->lsl_info = lsl_create_streaminfo(x->lsl_stream_name,"Markers",1,LSL_IRREGULAR_RATE,cft_string,"");
-	x->lsl_inlet = lsl_create_inlet(x->lsl_info, 300, LSL_NO_PREFERENCE, 1);
-
-	post("niceeeee");
 }
 
-// void lslreceive_free(t_lslreceive* x)
-// {
-// 	/* Do any deallocation needed here. */
-//     clock_unset(x->m_clock);
-//     object_free(x->m_clock);
-//     // lsl_destroy_inlet(x->lsl_inlet);
-// }
+void lslreceive_getSample(t_lslreceive *x){
+	int errcode;
+
+    switch (x->lsl_channel_format) {
+	    case cft_string:
+	        x->lsl_timestamp = lsl_pull_sample_str(x->lsl_inlet,x->cursample_string,1,0.0,&errcode);
+	        break;
+	    case cft_float32:
+	        x->lsl_timestamp = lsl_pull_sample_f(x->lsl_inlet,x->cursample_float,x->lsl_nchan,0,&errcode);
+	        break;
+	        
+	    default:
+	        x->lsl_timestamp = 0; //should never reach
+	        break;
+		}
+
+	while (x->lsl_timestamp>0)	{
+        //post("%f", x->lsl_timestamp);
+		// post ("%s  %s  %s  %s  %s  %s  %s  %s",x->cursample[0],x->cursample[1],x->cursample[2],x->cursample[3],x->cursample[4],x->cursample[5],x->cursample[6],x->cursample[7]);
+
+        
+        // create list depending on data type received
+        switch (x->lsl_channel_format) {
+            case cft_string:
+                // return list of strings, for flexibility, and consumer can use [fromsymbol] to convert to numbers
+                for (int k=0; k < 1; ++k) {
+                    SETSYMBOL(x->myList+k,gensym(x->cursample_string[k]));
+                    
+                }
+                post("%s\n",gensym(*x->cursample_string));
+                break;
+                
+            case cft_float32:
+                // return list of strings, for flexibility, and consumer can use [fromsymbol] to convert to numbers
+                for (int k=0; k < x->lsl_nchan; ++k) {
+                    SETFLOAT(x->myList+k,x->cursample_float[k]);
+                }
+                break;
+                
+            default:
+                break;
+        }
+
+        post("%f",x->lsl_timestamp);
+
+        outlet_float(x->out_timestamp, x->lsl_timestamp);
+		outlet_list(x->out_data,0L,x->lsl_nchan,x->myList);
+        // post("%s\n",x->myList);
+        
+        switch (x->lsl_channel_format) {
+            case cft_string:
+                x->lsl_timestamp = lsl_pull_sample_str(x->lsl_inlet,x->cursample_string,x->lsl_nchan,0,&errcode);
+                break;
+                
+            case cft_float32:
+                x->lsl_timestamp = lsl_pull_sample_f(x->lsl_inlet,x->cursample_float,x->lsl_nchan,0,&errcode);
+                break;
+                
+            default:
+                x->lsl_timestamp = 0; //should never reach
+                break;
+        }
+	}
+	clock_delay(x->x_clock, POLLING_INTERVAL_MS);
+
+}
+
+
+void lslreceive_free(t_lslreceive* x)
+{
+	/* Do any deallocation needed here. */
+    // clock_unset(x->m_clock);
+    // object_free(x->m_clock);
+    outlet_free(x->out_data);
+    outlet_free(x->out_timestamp);	
+    // lsl_destroy_inlet(x->lsl_inlet);
+}
 
 // void lslreceive_assist(t_lslreceive* x, void* b, long m, long a, char* s)
 // {
